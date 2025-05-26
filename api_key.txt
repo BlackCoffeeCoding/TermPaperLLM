@@ -1,0 +1,53 @@
+YTBiYjgwNmYtMmUxZi00ODVhLTg0YjQtYjAzN2U5OWI5Njc4OmZkMjUzODUzLTlkNGItNDYzNy05NDU3LTJiNmExYmFkNDZiNQ==
+YTBiYjgwNmYtMmUxZi00ODVhLTg0YjQtYjAzN2U5OWI5Njc4OmZkMjUzODUzLTlkNGItNDYzNy05NDU3LTJiNmExYmFkNDZiNQ==
+
+from transformers import AutoTokenizer, AutoModelForCausalLM
+import torch
+
+class TransformersLLMClient:
+    def __init__(self, model_name="tiiuae/falcon-7b-instruct"):
+        print("Загружаю модель через Hugging Face Transformers...")
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        self.model = AutoModelForCausalLM.from_pretrained(
+            model_name,
+            device_map="auto",
+            torch_dtype=torch.float16,
+            low_cpu_mem_usage=True
+        )
+        self.history = []
+
+    def reset_history(self):
+        self.history = []
+
+    def ask(self, text: str) -> str:
+        # Добавляем вопрос пользователя в историю
+        self.history.append({"role": "user", "content": text})
+
+        # Формируем prompt из всей истории
+        prompt = ""
+        for msg in self.history:
+            if msg["role"] == "user":
+                prompt += f"User: {msg['content']}\n"
+            elif msg["role"] == "assistant":
+                prompt += f"Assistant: {msg['content']}\n"
+
+        # Токенизация и перенос на устройство модели
+        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.model.device)
+
+        with torch.no_grad():
+            outputs = self.model.generate(
+                **inputs,
+                max_new_tokens=256,
+                pad_token_id=self.tokenizer.eos_token_id,
+                do_sample=True,
+                temperature=0.7
+            )
+
+        # Декодируем ответ и обрезаем prompt из начала
+        full_response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+        answer = full_response[len(prompt):].strip()
+
+        # Добавляем ответ ассистента в историю
+        self.history.append({"role": "assistant", "content": answer})
+
+        return answer
